@@ -1,0 +1,57 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # アプリ内の「更新の確認」用に、公開のたびに version.json を作り直す
+      - name: Generate version.json
+        run: |
+          node -e "
+            const fs = require('fs');
+            const v = require('./package.json').version;
+            fs.writeFileSync('public/version.json', JSON.stringify({
+              version: v,
+              appHash: process.env.GITHUB_SHA,
+              buildTime: Date.now()
+            }, null, 2) + '\n');
+          "
+
+      - run: npm run build
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
